@@ -11,6 +11,7 @@ Parameters:
 Globals:
   Function:
     Timeout: 3
+    Runtime: nodejs22.x
 
 Resources:
   HelloWorldFunction:
@@ -37,6 +38,76 @@ Resources:
         EntryPoints:
           - handlers/app.js
 
+  CryptoDetailsFetcherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./dist/
+      Handler: handlers/cryptoDetailsFetcherFunction.lambdaHandler
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref CryptoPricesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CryptoPricesTable
+      Role: !Ref NimoRoleArn
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - handlers/cryptoDetailsFetcherFunction.js
+
+  SaveCryptoDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./dist/
+      Handler: handlers/saveCryptoData.lambdaHandler
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref CryptoPricesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CryptoPricesTable
+      Role: !Ref NimoRoleArn
+      Events:
+        SaveCryptoDataApi:
+          Type: Api
+          Properties:
+            Path: /saveCryptoData
+            Method: post
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - handlers/saveCryptoData.js
+
+  CryptoPricesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: CryptoPricesTable
+      AttributeDefinitions:
+        - AttributeName: ids
+          AttributeType: S
+        - AttributeName: lastUpdatedAt
+          AttributeType: N
+      KeySchema:
+        - AttributeName: ids
+          KeyType: HASH
+        - AttributeName: lastUpdatedAt
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
 Outputs:
   HelloWorldApi:
     Description: "API Gateway endpoint URL for Prod stage for Hello World function"
@@ -47,3 +118,12 @@ Outputs:
   HelloWorldFunctionIamRole:
     Description: "IAM Role used by Hello World function"
     Value: !Ref NimoRoleArn
+  CryptoDetailsFetcherFunction:
+    Description: "Crypto Details Fetcher Lambda Function ARN"
+    Value: !GetAtt CryptoDetailsFetcherFunction.Arn
+  SaveCryptoDataFunction:
+    Description: "Save Crypto Data Lambda Function ARN"
+    Value: !GetAtt SaveCryptoDataFunction.Arn
+  CryptoPricesTableName:
+    Description: "DynamoDB Table Name"
+    Value: !Ref CryptoPricesTable
