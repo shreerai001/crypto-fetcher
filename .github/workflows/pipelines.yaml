@@ -2,11 +2,10 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -14,86 +13,112 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: "22"
+          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Lint Code
+        run: npm run lint
 
       - name: Run Tests
         run: npm test
+
+      - name: Build Lambda Functions
+        run: |
+          npm run build
+          mkdir -p dist/handlers
+          if [ ! -f "dist/handlers/app.js" ] || \
+             [ ! -f "dist/handlers/fetchCryptoData.js" ] || \
+             [ ! -f "dist/handlers/saveCryptoData.js" ]; then
+            echo "Missing required Lambda function files"
+            exit 1
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: lambda-artifacts
+          path: |
+            dist/
+            template.yaml
+          retention-days: 5
 
   deploy:
     name: Deploy to AWS
     runs-on: ubuntu-latest
     needs: build-and-test
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
         with:
-          node-version: "22"
+          name: lambda-artifacts
+          path: .
 
-      - name: Install Dependencies
-        run: npm install
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Build Application
-        run: npm run build
-
-      - name: Validate CloudFormation Template
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+      - name: Install AWS SAM CLI
         run: |
-          aws cloudformation validate-template --template-body file://template.yaml
+          pip install aws-sam-cli
 
-      - name: Package SAM Application
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+      - name: SAM Build
         run: |
-          aws cloudformation package \
-            --template-file template.yaml \
-            --s3-bucket ${{ secrets.S3_BUCKET_NAME }} \
-            --output-template-file packaged-template.yaml
+          sam build
 
-      - name: Deploy to AWS
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+      - name: SAM Deploy
         run: |
-          aws cloudformation deploy \
-            --template-file packaged-template.yaml \
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
             --stack-name crypto-finder-stack \
             --capabilities CAPABILITY_NAMED_IAM \
-            --parameter-overrides NimoRoleArn=${{ secrets.NIMO_ROLE_ARN }}
+            --parameter-overrides NimoRoleArn=${{ secrets.NIMO_ROLE_ARN }} \
+            --no-fail-on-empty-changeset \
+            --no-confirm-changeset
 
-      - name: Fetch CloudFormation Stack Events (on failure)
-        if: failure()
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+      - name: Verify Deployments
         run: |
-          aws cloudformation describe-stack-events --stack-name crypto-finder-stack
+          STACK_NAME="crypto-finder-stack"
+          HELLO_WORLD_ARN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`HelloWorldFunction`].OutputValue' --output text)
+          CRYPTO_FETCHER_ARN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`CryptoDetailsFetcherFunction`].OutputValue' --output text)
+          SAVE_CRYPTO_ARN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`SaveCryptoDataFunction`].OutputValue' --output text)
+          
+          for ARN in "$HELLO_WORLD_ARN" "$CRYPTO_FETCHER_ARN" "$SAVE_CRYPTO_ARN"
+          do
+            FUNCTION_NAME=$(echo $ARN | cut -d':' -f7)
+            aws lambda get-function --function-name $ARN
+            if [ $? -ne 0 ]; then
+              exit 1
+            fi
+          done
+          
+          TABLE_NAME=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`CryptoPricesTableName`].OutputValue' --output text)
+          aws dynamodb describe-table --table-name $TABLE_NAME
 
-      - name: Delete Failed Stack (on failure)
+      - name: Handle Deployment Failure
         if: failure()
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
-          aws cloudformation delete-stack --stack-name crypto-finder-stack
+          aws cloudformation describe-stack-events \
+            --stack-name crypto-finder-stack \
+            --query 'StackEvents[?contains(ResourceStatus, `FAILED`)]'
+          
+          for function in HelloWorldFunction CryptoDetailsFetcherFunction SaveCryptoDataFunction; do
+            aws logs get-log-events \
+              --log-group-name "/aws/lambda/$function" \
+              --limit 100 || true
+          done

@@ -12,16 +12,15 @@ Globals:
   Function:
     Timeout: 3
     Runtime: nodejs22.x
+    Architectures:
+      - x86_64
 
 Resources:
   HelloWorldFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./dist/
-      Handler: handlers/app.lambdaHandler
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
+      CodeUri: ./
+      Handler: dist/handlers/app.lambdaHandler
       Events:
         HelloWorld:
           Type: Api
@@ -36,16 +35,15 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - handlers/app.js
+          - src/handlers/app.ts
+        OutExtension:
+          - .js=.js
 
   CryptoDetailsFetcherFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./dist/
-      Handler: handlers/cryptoDetailsFetcherFunction.lambdaHandler
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
+      CodeUri: ./
+      Handler: dist/handlers/fetchCryptoData.lambdaHandler
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref CryptoPricesTable
@@ -60,16 +58,15 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - handlers/cryptoDetailsFetcherFunction.js
+          - src/handlers/fetchCryptoData.ts
+        OutExtension:
+          - .js=.js
 
   SaveCryptoDataFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./dist/
-      Handler: handlers/saveCryptoData.lambdaHandler
-      Runtime: nodejs22.x
-      Architectures:
-        - x86_64
+      CodeUri: ./
+      Handler: dist/handlers/saveCryptoData.lambdaHandler
       Environment:
         Variables:
           DYNAMODB_TABLE_NAME: !Ref CryptoPricesTable
@@ -82,7 +79,7 @@ Resources:
           Type: Api
           Properties:
             Path: /saveCryptoData
-            Method: post
+            Method: get
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -90,7 +87,9 @@ Resources:
         Target: "es2020"
         Sourcemap: true
         EntryPoints:
-          - handlers/saveCryptoData.js
+          - src/handlers/saveCryptoData.ts
+        OutExtension:
+          - .js=.js
 
   CryptoPricesTable:
     Type: AWS::DynamoDB::Table
