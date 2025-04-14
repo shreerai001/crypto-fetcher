@@ -2,7 +2,7 @@ import {CryptoRepository} from "../../src/repository/CryptoRepository";
 import {SecretsManagerUtil} from "../../src/utils/SecretsManagerUtil";
 import {CoinGeckoApiUtil} from "../../src/utils/CoinGeckoApiUtil";
 import {PersistCryptoDataServiceImpl} from "../../src/service/impl/PersistCryptoDataServiceImpl";
-import {CoinGeckoRequest} from "../../src/model/CoinGeckoRequest"; // Add this import
+import {CoinGeckoRequest} from "../../src/model/CoinGeckoRequest"; 
 
 jest.mock("../../src/utils/SecretsManagerUtil");
 jest.mock("../../src/utils/CoinGeckoApiUtil");

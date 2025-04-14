@@ -3,7 +3,9 @@ import {CoinGeckoRequest} from "../../model/CoinGeckoRequest";
 
 export class CoinGeckoMapper {
 
-    private constructor() {}
+    private constructor() {
+        // enforces non object creation as all the methods are supposed to static
+    }
 
     public static toCoinGecko(event: Readonly<APIGatewayProxyEvent>): CoinGeckoRequest {
         const body = event.body ? JSON.parse(event.body) : null;

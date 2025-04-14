@@ -2,7 +2,9 @@ import {SecretsManagerClient, GetSecretValueCommand} from "@aws-sdk/client-secre
 
 export class SecretsManagerUtil {
 
-    private constructor() {}
+    private constructor() {
+        // enforces non object creation as all the methods are supposed to static
+    }
 
     public static async getSecret(secretName: Readonly<string>): Promise<string> {
         const secretsClient = new SecretsManagerClient({});

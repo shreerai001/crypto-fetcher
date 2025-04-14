@@ -5,7 +5,9 @@ import { CoinGeckoApiResponse } from "../model/CoinGeckoApiResponse";
 export class CoinGeckoApiUtil {
     private static readonly BASE_URL = "https://api.coingecko.com/api/v3";
 
-    private constructor() {}
+    private constructor() {
+        // enforces non object creation as all the methods are supposed to static
+    }
 
 
     public static async fetchCryptoData(

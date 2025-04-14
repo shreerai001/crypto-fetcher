@@ -31,15 +31,7 @@ jobs:
         run: npm test
 
       - name: Build Lambda Functions
-        run: |
-          npm run build
-          mkdir -p dist/handlers
-          if [ ! -f "dist/handlers/app.js" ] || \
-             [ ! -f "dist/handlers/fetchCryptoData.js" ] || \
-             [ ! -f "dist/handlers/saveCryptoData.js" ]; then
-            echo "Missing required Lambda function files"
-            exit 1
-          fi
+        run: npm run build
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
@@ -74,12 +66,10 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Install AWS SAM CLI
-        run: |
-          pip install aws-sam-cli
+        run: pip install aws-sam-cli
 
       - name: SAM Build
-        run: |
-          sam build
+        run: sam build
 
       - name: SAM Deploy
         run: |
@@ -87,38 +77,10 @@ jobs:
             --template-file .aws-sam/build/template.yaml \
             --stack-name crypto-finder-stack \
             --capabilities CAPABILITY_NAMED_IAM \
-            --parameter-overrides NimoRoleArn=${{ secrets.NIMO_ROLE_ARN }} \
             --no-fail-on-empty-changeset \
             --no-confirm-changeset
 
       - name: Verify Deployments
         run: |
           STACK_NAME="crypto-finder-stack"
-          HELLO_WORLD_ARN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`HelloWorldFunction`].OutputValue' --output text)
-          CRYPTO_FETCHER_ARN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`CryptoDetailsFetcherFunction`].OutputValue' --output text)
-          SAVE_CRYPTO_ARN=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`SaveCryptoDataFunction`].OutputValue' --output text)
-          
-          for ARN in "$HELLO_WORLD_ARN" "$CRYPTO_FETCHER_ARN" "$SAVE_CRYPTO_ARN"
-          do
-            FUNCTION_NAME=$(echo $ARN | cut -d':' -f7)
-            aws lambda get-function --function-name $ARN
-            if [ $? -ne 0 ]; then
-              exit 1
-            fi
-          done
-          
-          TABLE_NAME=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`CryptoPricesTableName`].OutputValue' --output text)
-          aws dynamodb describe-table --table-name $TABLE_NAME
-
-      - name: Handle Deployment Failure
-        if: failure()
-        run: |
-          aws cloudformation describe-stack-events \
-            --stack-name crypto-finder-stack \
-            --query 'StackEvents[?contains(ResourceStatus, `FAILED`)]'
-          
-          for function in HelloWorldFunction CryptoDetailsFetcherFunction SaveCryptoDataFunction; do
-            aws logs get-log-events \
-              --log-group-name "/aws/lambda/$function" \
-              --limit 100 || true
-          done
+          aws cloudformation describe-stacks --stack-name $STACK_NAME

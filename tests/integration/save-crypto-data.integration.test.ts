@@ -7,7 +7,7 @@ import {CoinGeckoRequest} from "../../src/model/CoinGeckoRequest";
  * this is integration test which hits coingecko api and gets result, coingecko api-token stored in secrete manager
  * this save data in dynamoDB, needs to change to docker dynamo db local integration
  */
-describe("PersistCryptoDataServiceImpl Integration Test", () => {
+describe.skip("PersistCryptoDataServiceImpl Integration Test", () => {
     const dynamoDBClient = new DynamoDBClient({ region: "ap-southeast-2" });
     const tableName = "CryptoPricesTable";
 
